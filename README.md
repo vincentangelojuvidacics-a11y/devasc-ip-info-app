@@ -109,5 +109,3 @@ Private, loopback, and other non-public addresses skip the API call, because the
 | Almonte | Developer (API) | `feature/api` | `ipinfo/api.py`, `ipinfo/exporter.py` |
 | Navarro | Developer (Analysis & UI) | `feature/analyzer` | `ipinfo/analyzer.py`, `ipinfo/formatter.py` |
 | Reyes | QA & Documentation | `feature/tests-docs` | `tests/test_app.py`, `README.md` |
-# devasc-ip-info-app
-DEVASC Project Activity 3 (Option 2) - Python CLI that shows public IPv4/IPv6 addressing info (ISP, ASN, geolocation) for network technicians
