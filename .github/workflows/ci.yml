@@ -1,0 +1,66 @@
+# CI/CD pipeline for the IPv4/IPv6 Address Information Tool (Project Activity 4)
+#
+# Runs automatically on every push to any branch and on every pull request
+# into main. Branch protection on main requires the "lint" and all three
+# "test" jobs to pass before a pull request can be merged.
+#
+#   lint     -> flake8 catches syntax errors and undefined names
+#   test     -> pytest on Python 3.10, 3.11 and 3.12 (all network calls are mocked)
+#   package  -> after a merge to main, uploads the tested app as a build artifact
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flake8
+      - run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -v --junitxml=test-results.xml
+        env:
+          IPINFO_CACHE_DIR: ${{ runner.temp }}/ipinfo-cache
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: test-results.xml
+
+  package:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipinfo-app
+          path: |
+            main.py
+            requirements.txt
+            ipinfo/
+            README.md
