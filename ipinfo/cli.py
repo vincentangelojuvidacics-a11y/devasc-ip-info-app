@@ -11,9 +11,11 @@ cli.py - Entry point. Two ways to use the app:
        python main.py --subnet 192.168.1.0/26
        python main.py --me --export json   # also save a report
        python main.py --lookup 8.8.8.8 --no-cache   # skip the 24-hour cache
+       python main.py --bulk samples/ips.txt --export csv   # a whole list of IPs
 """
 
 import argparse
+import csv
 
 from . import analyzer, api, exporter, formatter as fmt
 
@@ -89,6 +91,73 @@ def subnet_calc(cidr_text):
         fmt.error(f"Invalid network: {exc}")
 
 
+CSV_HEADERS = {"ip", "ip address", "ip_address", "address"}
+
+
+def read_ip_file(path):
+    """
+    Read IP addresses from a .txt file (one per line) or a .csv file (first column).
+    Blank lines, '#' comments and duplicates are skipped.
+    Returns (valid_ips, rejected_entries). Raises OSError if the file cannot be read.
+    """
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        if path.lower().endswith(".csv"):
+            entries = [row[0] if row else "" for row in csv.reader(f)]
+            if entries and entries[0].strip().lower() in CSV_HEADERS:
+                entries = entries[1:]  # skip a header row such as "ip"
+        else:
+            entries = f.read().splitlines()
+
+    valid, rejected, seen = [], [], set()
+    for raw in entries:
+        text = raw.split("#", 1)[0].strip()
+        if not text:
+            continue
+        ip = analyzer.validate_ip(text)
+        if ip is None:
+            rejected.append(text)
+        elif str(ip) not in seen:
+            seen.add(str(ip))
+            valid.append(str(ip))
+    return valid, rejected
+
+
+def _bulk_row(ip_text, use_cache):
+    """Look up one address for bulk mode. Never raises: errors become a status."""
+    ip = analyzer.validate_ip(ip_text)
+    row = {"ip": ip_text, "type": analyzer.classify(ip),
+           "hostname": analyzer.reverse_dns(ip_text) or "No PTR record"}
+    if not ip.is_global:
+        return {**row, "status": "offline (not public)"}
+    try:
+        details = api.get_ip_details(ip_text, use_cache=use_cache)
+    except api.IPLookupError:
+        return {**row, "status": "error"}
+    status = "cached" if details.get("source", "").endswith("(cached)") else "ok"
+    return {**details, **row, "status": status}
+
+
+def bulk_lookup(path, use_cache=True):
+    """Feature 6 (Activity 4): look up every IP address listed in a .txt/.csv file."""
+    try:
+        ips, rejected = read_ip_file(path)
+    except OSError as exc:
+        fmt.error(f"Cannot read '{path}': {exc.strerror or exc}")
+        return []
+    if rejected:
+        shown = ", ".join(rejected[:5]) + (" ..." if len(rejected) > 5 else "")
+        fmt.info(f"Skipped {len(rejected)} invalid entr{'y' if len(rejected) == 1 else 'ies'}: {shown}")
+    if not ips:
+        fmt.error("No valid IP addresses found in the file.")
+        return []
+
+    fmt.info(f"Looking up {len(ips)} address(es)...")
+    rows = [_bulk_row(ip, use_cache) for ip in ips]
+    session_results.extend(rows)
+    fmt.show_bulk_summary(rows)
+    return rows
+
+
 def export_results(fmt_name):
     """Feature 5: save this session's lookups to reports/."""
     if not session_results:
@@ -109,6 +178,7 @@ MENU = """
   [cyan]3[/cyan]  Analyze an IP address (offline)
   [cyan]4[/cyan]  Subnet calculator
   [cyan]5[/cyan]  Export session results (JSON / CSV)
+  [cyan]6[/cyan]  Bulk lookup from a .txt / .csv file
   [cyan]0[/cyan]  Exit
 """
 
@@ -129,6 +199,8 @@ def interactive():
         elif choice == "5":
             kind = fmt.console.input("Format [json/csv] (default json): ").strip().lower()
             export_results("csv" if kind == "csv" else "json")
+        elif choice == "6":
+            bulk_lookup(fmt.console.input("Path to .txt or .csv file: ").strip().strip('"'))
         elif choice in ("0", "q", "quit", "exit"):
             fmt.success("Goodbye!")
             break
@@ -145,6 +217,7 @@ def build_parser():
     p.add_argument("--lookup", metavar="IP", help="get details for any IP address")
     p.add_argument("--analyze", metavar="IP", help="offline analysis of an IP address")
     p.add_argument("--subnet", metavar="CIDR", help="subnet calculator, e.g. 10.0.0.0/22")
+    p.add_argument("--bulk", metavar="FILE", help="look up every IP in a .txt or .csv file")
     p.add_argument("--export", choices=["json", "csv"], help="save results to reports/")
     p.add_argument("--no-cache", action="store_true",
                    help="ignore the 24-hour lookup cache and fetch fresh data")
@@ -153,7 +226,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    if not any([args.me, args.lookup, args.analyze, args.subnet]):
+    if not any([args.me, args.lookup, args.analyze, args.subnet, args.bulk]):
         try:
             interactive()
         except (KeyboardInterrupt, EOFError):
@@ -169,5 +242,7 @@ def main(argv=None):
         analyze_only(args.analyze)
     if args.subnet:
         subnet_calc(args.subnet)
+    if args.bulk:
+        bulk_lookup(args.bulk, use_cache=not args.no_cache)
     if args.export:
         export_results(args.export)

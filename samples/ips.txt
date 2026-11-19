@@ -1,0 +1,10 @@
+# Sample list for the bulk lookup demo:  python main.py --bulk samples/ips.txt
+# One address per line. Lines starting with # are comments.
+
+8.8.8.8           # Google Public DNS
+1.1.1.1           # Cloudflare DNS
+2001:4860:4860::8888
+192.168.1.10      # private - analyzed offline, no API call
+100.64.0.5        # CGNAT - analyzed offline
+8.8.8.8           # duplicate - skipped
+192.168.1.300     # invalid - reported, not looked up

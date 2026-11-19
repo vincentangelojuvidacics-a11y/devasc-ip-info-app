@@ -39,7 +39,7 @@ def _value(v):
 def banner():
     console.print(Panel.fit(
         "[bold cyan]IPv4 / IPv6 Address Information Tool[/bold cyan]\n"
-        "[dim]DEVASC Project Activity 3 - Network Technician Prototype[/dim]",
+        "[dim]DEVASC Project Activity 4 - Network Technician Prototype[/dim]",
         border_style="cyan",
     ))
 
@@ -72,6 +72,24 @@ def show_details(details, title="IP Details"):
     if lat is not None and lon is not None:
         console.print(f"[dim]Map: https://www.google.com/maps?q={lat},{lon}[/dim]")
     console.print(f"[dim]Data source: {details.get('source', '?')}[/dim]\n")
+
+
+STATUS_STYLE = {"ok": "green", "cached": "cyan", "error": "red"}
+
+
+def show_bulk_summary(rows):
+    """One table for a bulk lookup: one row per IP address."""
+    table = Table(title=f"Bulk Lookup - {len(rows)} address(es)", header_style="bold magenta")
+    for column in ("IP Address", "Type", "Country", "ISP / Organization", "Hostname (PTR)", "Status"):
+        table.add_column(column, overflow="fold")
+    for row in rows:
+        style = STATUS_STYLE.get(row.get("status"), "yellow")
+        table.add_row(
+            row.get("ip"), _value(row.get("type")), _value(row.get("country")),
+            _value(row.get("isp")), _value(row.get("hostname")),
+            f"[{style}]{row.get('status')}[/{style}]",
+        )
+    console.print(table)
 
 
 def show_facts(facts, title):
