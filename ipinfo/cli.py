@@ -47,8 +47,10 @@ def lookup_ip(ip_text, title=None):
         return
 
     facts = analyzer.analyze(str(ip))
+    hostname = analyzer.reverse_dns(str(ip)) or "No PTR record"
     # Private/loopback addresses have no public geolocation - skip the API call.
     if not ip.is_global:
+        facts["Hostname (PTR)"] = hostname
         fmt.show_facts(facts, f"Analysis of {ip}")
         fmt.info(f"{facts['Type']} addresses are not on the public internet, "
                  "so there is no ISP/location data.")
@@ -59,9 +61,11 @@ def lookup_ip(ip_text, title=None):
         details = api.get_ip_details(str(ip))
     except api.IPLookupError as exc:
         fmt.error(f"Could not get online details: {exc}")
+        facts["Hostname (PTR)"] = hostname
         fmt.show_facts(facts, f"Offline analysis of {ip}")
         return
 
+    details["hostname"] = hostname
     fmt.show_details(details, title or f"Details for {ip}")
     fmt.show_facts(facts, "Technical analysis")
     session_results.append({**details, "type": facts["Type"]})

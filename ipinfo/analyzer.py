@@ -8,9 +8,17 @@ legacy class and default subnet info.
 
 This is also how the app VALIDATES user input before calling any API,
 so we never waste an API request on a typo like "192.168.1.300".
+
+reverse_dns() is the one function here that uses the network (a DNS PTR
+query). analyze() stays fully offline; cli.py adds the hostname to lookup
+and bulk results.
 """
 
 import ipaddress
+import socket
+import threading
+
+DNS_TIMEOUT = 3  # seconds before reverse_dns() gives up
 
 
 def validate_ip(text):
@@ -96,6 +104,34 @@ def analyze(ip_text):
             facts["Embedded IPv4"] = str(ip.ipv4_mapped)
 
     return facts
+
+
+def reverse_dns(ip_text, timeout=DNS_TIMEOUT):
+    """
+    Return the hostname (PTR record) for an IP, e.g. '8.8.8.8' -> 'dns.google',
+    or None if there is no PTR record or the lookup takes longer than `timeout`.
+    Raises ValueError if the address is invalid.
+
+    socket.setdefaulttimeout() does NOT apply to gethostbyaddr(), so the
+    query runs in a background (daemon) thread and we stop waiting after
+    `timeout` seconds. A slow DNS server can no longer freeze a bulk run.
+    """
+    ip = validate_ip(ip_text)
+    if ip is None:
+        raise ValueError(f"'{ip_text}' is not a valid IPv4 or IPv6 address")
+
+    result = {}
+
+    def worker():
+        try:
+            result["name"] = socket.gethostbyaddr(str(ip))[0]
+        except OSError:  # socket.herror (no PTR), gaierror, timeout
+            result["name"] = None
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    return result.get("name")
 
 
 def subnet_info(cidr_text):

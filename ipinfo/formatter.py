@@ -15,6 +15,7 @@ console = Console()
 # Friendly labels for api.py's STANDARD_FIELDS, in display order.
 DETAIL_LABELS = [
     ("ip", "IP Address"),
+    ("hostname", "Hostname (PTR)"),
     ("version", "Version"),
     ("isp", "ISP / Organization"),
     ("asn", "ASN"),
