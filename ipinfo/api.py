@@ -21,6 +21,8 @@ HOW TO ADD A NEW PROVIDER (for future teams):
 
 import requests
 
+from . import cache
+
 TIMEOUT = 8  # seconds - keep the app responsive on slow connections
 HEADERS = {"User-Agent": "DEVASC-IP-Info-App/1.0"}
 
@@ -135,15 +137,27 @@ PROVIDERS = [
 # ----------------------------------------------------------------------
 # 3. Public function used by the rest of the app
 # ----------------------------------------------------------------------
-def get_ip_details(ip):
+def get_ip_details(ip, use_cache=True):
     """
     Look up geolocation / ISP / ASN details for `ip`.
     Tries each provider in PROVIDERS; raises IPLookupError if all fail.
+
+    With use_cache=True (default) a result saved in the last 24 hours is
+    returned without any API call, and its "source" ends with "(cached)".
+    Pass use_cache=False (the --no-cache option) to force fresh data.
     """
+    if use_cache:
+        cached = cache.get(ip)
+        if cached is not None:
+            cached["source"] = f"{cached.get('source', '?')} (cached)"
+            return cached
+
     errors = []
     for name, fetch, normalize in PROVIDERS:
         try:
-            return normalize(fetch(ip))
+            details = normalize(fetch(ip))
+            cache.put(ip, details)  # only successful lookups reach this line
+            return details
         except (requests.RequestException, ValueError, IPLookupError) as exc:
             # Keep the message short: exception type + reason, not the full traceback text
             reason = str(exc).split("(Caused by")[0].strip()[:60] or type(exc).__name__

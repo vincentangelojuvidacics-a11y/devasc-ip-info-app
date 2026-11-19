@@ -10,6 +10,7 @@ cli.py - Entry point. Two ways to use the app:
        python main.py --analyze 2001:db8::1  # offline analysis only
        python main.py --subnet 192.168.1.0/26
        python main.py --me --export json   # also save a report
+       python main.py --lookup 8.8.8.8 --no-cache   # skip the 24-hour cache
 """
 
 import argparse
@@ -23,7 +24,7 @@ session_results = []
 # ----------------------------------------------------------------------
 # Features (each menu item maps to one function)
 # ----------------------------------------------------------------------
-def show_my_ips():
+def show_my_ips(use_cache=True):
     """Feature 1: detect public IPv4 + IPv6, then show details for each."""
     fmt.info("Detecting your public IP addresses...")
     ipv4 = api.get_public_ip(4)
@@ -36,10 +37,11 @@ def show_my_ips():
 
     for ip in (ipv4, ipv6):
         if ip:
-            lookup_ip(ip, title=f"Details for your IPv{analyzer.validate_ip(ip).version}")
+            lookup_ip(ip, title=f"Details for your IPv{analyzer.validate_ip(ip).version}",
+                      use_cache=use_cache)
 
 
-def lookup_ip(ip_text, title=None):
+def lookup_ip(ip_text, title=None, use_cache=True):
     """Feature 2: validate, analyze offline, then fetch online details."""
     ip = analyzer.validate_ip(ip_text)
     if ip is None:
@@ -58,7 +60,7 @@ def lookup_ip(ip_text, title=None):
         return
 
     try:
-        details = api.get_ip_details(str(ip))
+        details = api.get_ip_details(str(ip), use_cache=use_cache)
     except api.IPLookupError as exc:
         fmt.error(f"Could not get online details: {exc}")
         facts["Hostname (PTR)"] = hostname
@@ -144,6 +146,8 @@ def build_parser():
     p.add_argument("--analyze", metavar="IP", help="offline analysis of an IP address")
     p.add_argument("--subnet", metavar="CIDR", help="subnet calculator, e.g. 10.0.0.0/22")
     p.add_argument("--export", choices=["json", "csv"], help="save results to reports/")
+    p.add_argument("--no-cache", action="store_true",
+                   help="ignore the 24-hour lookup cache and fetch fresh data")
     return p
 
 
@@ -158,9 +162,9 @@ def main(argv=None):
         return
 
     if args.me:
-        show_my_ips()
+        show_my_ips(use_cache=not args.no_cache)
     if args.lookup:
-        lookup_ip(args.lookup)
+        lookup_ip(args.lookup, use_cache=not args.no_cache)
     if args.analyze:
         analyze_only(args.analyze)
     if args.subnet:
